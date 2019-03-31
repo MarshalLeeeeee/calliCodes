@@ -284,6 +284,7 @@ def main():
     idxes_1 = np.arange(imageNum, dtype=np.int32)
     config = tf.ConfigProto() 
     config.gpu_options.per_process_gpu_memory_fraction = parser.gpu_fraction
+    saver = tf.train.Saver()
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
         for epoch in range(epochs):
@@ -317,6 +318,7 @@ def main():
             feed_dict_not_training = {image1:image1_plot,image2:image2_plot,is_training:False}
             image1_reconstruct = sess.run(image1_forward_reconstruct,feed_dict=feed_dict_not_training)
             plot(image1_plot, image1_reconstruct, image2_plot, epoch)
+        saver.save(sess,'ckpt/model')
 
 
 if __name__ == '__main__':
