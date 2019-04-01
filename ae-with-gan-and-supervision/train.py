@@ -60,7 +60,7 @@ def main():
                                                                                                         image1,image2,kernel,stride,class_dim,is_training,
                                                                                                         reconstruct_coef,generator_coef,discriminator_coef,
                                                                                                         'cycle-consistent-vae-with-gan')
-
+    
     encoder_variables = scope_variables("cycle-consistent-vae-with-gan/encoder")
     decoder_variables = scope_variables('cycle-consistent-vae-with-gan/decoder')
     discriminator_variables = scope_variables('cycle-consistent-vae-with-gan/discriminator')
