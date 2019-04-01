@@ -26,7 +26,7 @@ def init():
     parser.add_argument('--discriminator_coef', type=float, default=1.0, help="discriminator coef")
     return parser.parse_args()
 
-def main():
+def test_with_graph_manually_set_up():
     parser = init()
     os.environ["CUDA_VISIBLE_DEVICES"] = parser.gpu
     categorical_cardinality = parser.categorical_cardinality
@@ -74,6 +74,58 @@ def main():
         print(latent_vector)
         plot(image1_test, image_reconstruct, image2_test, 0)
 
+def test_with_graph_automatically_loaded():
+    parser = init()
+    os.environ["CUDA_VISIBLE_DEVICES"] = parser.gpu
+    categorical_cardinality = parser.categorical_cardinality
+    data_path = parser.data_path
+    styles = parser.styles
+    image_size = parser.image_size
+    force_grayscale = parser.force_grayscale
+    channel_size = 1 if force_grayscale else 3
+    seed = parser.seed
+    lr = parser.lr
+    batch_size = parser.batch_size
+    epochs = parser.epochs
+    kernel = parser.kernel
+    stride = parser.stride
+    class_dim = parser.class_dim
+    reconstruct_coef = parser.reconstruct_coef
+    generator_coef = parser.generator_coef
+    discriminator_coef = parser.discriminator_coef
+
+    imageName, imageDict = locate(data_path, styles=styles, max_label=categorical_cardinality)
+    _, imageTrue = locate(data_path, max_label=categorical_cardinality)
+    imageNum = len(imageName)
+
+    #image1 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image1")
+    #image2 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image2")
+    #is_training = tf.placeholder(tf.bool,[],name="is_training")
+
+    saver = tf.train.import_meta_graph('ckpt/server-2/model.meta')
+    graph = tf.get_default_graph()
+    with graph.as_default():
+        variable_names = [v.name for v in tf.all_variables()]
+        print(variable_names)
+        config = tf.ConfigProto() 
+        config.gpu_options.per_process_gpu_memory_fraction = parser.gpu_fraction
+        idxes_1 = np.arange(imageNum, dtype=np.int32)
+        np.random.shuffle(idxes_1)
+        with tf.Session(config=config) as sess:
+            saver.restore(sess, tf.train.latest_checkpoint('ckpt/server-2/'))
+            image1_test = loader(imageName[idxes_1[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image2_test = loader(find_truth(imageName[idxes_1[0:10]],imageTrue),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image1 = graph.get_tensor_by_name('image1:0')
+            image2 = graph.get_tensor_by_name('image2:0')
+            is_training = graph.get_tensor_by_name('is_training:0')
+            feed_dict_not_training = {image1:image1_test,image2:image2_test,is_training:False}
+            class_vector = graph.get_operation_by_name('cycle-consistent-vae-with-gan/encoder/class_vector/fully_connected/Maximum')
+            image_reconstruct = graph.get_operation_by_name('cycle-consistent-vae-with-gan/decoder/conv4/Conv2d_transpose/Sigmoid')
+            _class_vector, _image_reconstruct = sess.run([class_vector, image_reconstruct],feed_dict = feed_dict_not_training)
+            print(_class_vector.shape)
+            plot(image1_test, _image_reconstruct, image2_test, 0)
+
 
 if __name__ == '__main__':
-    main()
+    #test_with_graph_manually_set_up()
+    test_with_graph_automatically_loaded()
