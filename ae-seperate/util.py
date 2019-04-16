@@ -51,7 +51,7 @@ def loader(imageName,desired_height,desired_width,value_range,force_grayscale=Tr
     image_batch = (value_range[0] + (image_batch / 255.0) * (value_range[1] - value_range[0]))
     return image_batch
 
-def plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, epoch, reconstruct_coef_1, reconstruct_coef_2):
+def plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, title, epoch, reconstruct_coef_1, reconstruct_coef_2, lr):
     num, w, h, c = image1_plot.shape[0], image1_plot.shape[1], image1_plot.shape[2], image1_plot.shape[3]
     img = Image.new('L',(w*4,h*num))
     for i in range(num):
@@ -59,7 +59,7 @@ def plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, epoch
         img.paste(Image.fromarray(np.squeeze((image2_plot[i]*255).astype(np.uint8))),(64*1,64*i))
         img.paste(Image.fromarray(np.squeeze((image1_reconstruct[i]*255).astype(np.uint8))),(64*2,64*i))
         img.paste(Image.fromarray(np.squeeze((image2_reconstruct[i]*255).astype(np.uint8))),(64*3,64*i))
-    img.save(os.path.join('savedImages',str(epoch)+'-'+str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)+'.png'))
+    img.save(os.path.join('savedImages',title+'-'+str(epoch)+'-'+str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)+str(lr)+'-''.png'))
 
 def save_vector(imageName, vector):
     path = '../../demo'

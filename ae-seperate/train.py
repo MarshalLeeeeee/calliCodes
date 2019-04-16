@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import os
 from util import locate, choice, find_truth, loader, plot
-from network import cycle_consistent_vae_with_gan, scope_variables, get_mean
+from network import ae_with_gan, scope_variables, get_mean
 
 def init():
     parser = argparse.ArgumentParser()
@@ -60,7 +60,7 @@ def main():
     image2 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image2")
     is_training = tf.placeholder(tf.bool,[],name="is_training")
 
-    forward_loss, reconstruct_loss_1, reconstruct_loss_2, generator_loss, discriminator_loss, image1_forward_reconstruct, image2_forward_reconstruct,  _, _ = cycle_consistent_vae_with_gan(
+    forward_loss, reconstruct_loss_1, reconstruct_loss_2, generator_loss, discriminator_loss, image1_forward_reconstruct, image2_forward_reconstruct,  _, _, image1_transfer_reconstruct, image2_transfer_reconstruct = ae_with_gan(
                                                                                                                                  image1,image2,kernel,stride,class_dim,style_dim,is_training,
                                                                                                                                  reconstruct_coef_1,reconstruct_coef_2,generator_coef,discriminator_coef,
                                                                                                                                  'cycle-consistent-vae-with-gan')
@@ -68,6 +68,9 @@ def main():
     encoder_variables = scope_variables("cycle-consistent-vae-with-gan/encoder")
     decoder_variables = scope_variables('cycle-consistent-vae-with-gan/decoder')
     discriminator_variables = scope_variables('cycle-consistent-vae-with-gan/discriminator')
+    all_variables = scope_variables('cycle-consistent-vae-with-gan')
+    #print([n.name for n in tf.get_default_graph().as_graph_def().node])
+    print([n.name for n in all_variables])
 
     forward_solver = tf.train.AdamOptimizer(learning_rate=lr,beta1=0.5)
     generator_solver = tf.train.AdamOptimizer(learning_rate=lr,beta1=0.5)
@@ -112,14 +115,21 @@ def main():
 
             print('epoch: %d\nforward_loss: %f, self_reconstruct_loss: %f, truth_reconstruct_loss: %f\ngenerator_loss: %f, discriminator_loss: %f\n' % (epoch, get_mean(forward_losses), get_mean(reconstruct_losses_1), get_mean(reconstruct_losses_2), get_mean(generator_losses), get_mean(discriminator_losses)))
             
+            # test
+            # truth
             image1_plot = loader(imageName[idxes_1[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
             image2_plot = loader(find_truth(imageName[idxes_1[0:10]],imageTrue),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
             feed_dict_not_training = {image1:image1_plot,image2:image2_plot,is_training:False}
             image1_reconstruct, image2_reconstruct = sess.run([image1_forward_reconstruct,image2_forward_reconstruct],feed_dict=feed_dict_not_training)
-            plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, epoch, reconstruct_coef_1, reconstruct_coef_2)
-        if not os.path.exists(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2))):
-            os.mkdir(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)))
-        saver.save(sess,os.path.join(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)),'model'))
+            plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, 'truth', epoch, reconstruct_coef_1, reconstruct_coef_2, lr)
+
+            # transfer
+            image2_plot = loader(imageName[idxes_1[10:20]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            feed_dict_not_training = {image1:image1_plot,image2:image2_plot,is_training:False}
+            _image1_transfer_reconstruct,_image2_transfer_reconstruct = sess.run([image1_transfer_reconstruct, image2_transfer_reconstruct],feed_dict=feed_dict_not_training)
+            plot(image1_plot, image2_plot, _image1_transfer_reconstruct, _image2_transfer_reconstruct, 'transfer', epoch, reconstruct_coef_1, reconstruct_coef_2, lr)
+
+        saver.save(sess,os.path.join(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)+'-'+str(lr)),'model'))
 
 
 if __name__ == '__main__':

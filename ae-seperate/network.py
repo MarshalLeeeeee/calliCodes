@@ -1,5 +1,6 @@
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
+from tensorflow.python.ops import variable_scope
 import numpy as np
 
 def get_mean(x):
@@ -85,8 +86,9 @@ def fc(inputs,num_outputs,is_training,normalizer_fn,activation_fn,name):
                 normalizer_params={"is_training": is_training, "updates_collections": None})
         return out
 
-def encoder(image,kernel,stride,class_dim,style_dim,is_training,name):
-    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
+def encoder(image,kernel,stride,class_dim,style_dim,is_training,name='encoder'):
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE) as scope:
+        print(scope.name, name)
         conv1 = conv2d(image,32,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv1')
         conv2 = conv2d(conv1,64,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv2')
         conv3 = conv2d(conv2,128,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv3')
@@ -94,12 +96,15 @@ def encoder(image,kernel,stride,class_dim,style_dim,is_training,name):
         sp = conv4.get_shape()
         flatten = tf.reshape(conv4, [-1,sp[1]*sp[2]*sp[3]])
         fc1 = fc(flatten,1024,is_training,layers.batch_norm,leaky_rectify,'fc1')
-        class_vector = fc(fc1,class_dim,is_training,layers.batch_norm,leaky_rectify,'class_vector')
-        style_vector = fc(fc1,style_dim,is_training,layers.batch_norm,leaky_rectify,'style_vector')
-        return class_vector, style_vector, sp[1], sp[2], sp[3]
+        #class_vector = fc(fc1,class_dim,is_training,layers.batch_norm,leaky_rectify,'class_vector')
+        #style_vector = fc(fc1,style_dim,is_training,layers.batch_norm,leaky_rectify,'style_vector')
+        class_vector = fc(fc1,class_dim,is_training,layers.batch_norm,tf.nn.tanh,'class_vector')
+        style_vector = fc(fc1,style_dim,is_training,layers.batch_norm,tf.nn.tanh,'style_vector')
+    return class_vector, style_vector, sp[1], sp[2], sp[3]
 
-def decoder(vector,w,h,c,kernel,stride,is_training,name):
-    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
+def decoder(vector,w,h,c,kernel,stride,is_training,name='decoder'):
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE) as scope:
+        print(scope.name, name)
         fc1 = fc(vector,1024,is_training,layers.batch_norm,leaky_rectify,'fc1')
         fc2 = fc(fc1,w*h*c,is_training,layers.batch_norm,leaky_rectify,'fc2')
         expand = tf.reshape(fc2, [-1,w,h,c])
@@ -107,10 +112,11 @@ def decoder(vector,w,h,c,kernel,stride,is_training,name):
         conv2 = conv2d_transpose(conv1,64,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv2')
         conv3 = conv2d_transpose(conv2,32,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv3')
         conv4 = conv2d_transpose(conv3,1,kernel,stride,is_training,conv_batch_norm,tf.nn.sigmoid,'conv4')
-        return conv4
+    return conv4
 
-def discriminator(image,kernel,stride,is_training,name):
-    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
+def discriminator(image,kernel,stride,is_training,name='discriminator'):
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE) as scope:
+        print(scope.name, name)
         conv1 = conv2d(image,32,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv1')
         conv2 = conv2d(conv1,64,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv2')
         conv3 = conv2d(conv2,128,kernel,stride,is_training,conv_batch_norm,leaky_rectify,'conv3')
@@ -120,35 +126,54 @@ def discriminator(image,kernel,stride,is_training,name):
         fc1 = fc(flatten,1024,is_training,layers.batch_norm,leaky_rectify,'fc1')
         fc2 = fc(fc1,128,is_training,layers.batch_norm,leaky_rectify,'fc2')
         pred = fc(fc2,1,is_training,layers.batch_norm,tf.nn.sigmoid,'pred')
-        return pred
+    return pred
 
-def cycle_consistent_vae_with_gan(image1,image2,kernel,stride,class_dim,style_dim,is_training,reconstruct_coef_1,reconstruct_coef_2,generator_coef,discriminator_coef,name):
+def ae_with_gan(image1,image2,kernel,stride,class_dim,style_dim,is_training,reconstruct_coef_1,reconstruct_coef_2,generator_coef,discriminator_coef,name='cycle-consistent-vae-with-gan'):
     # image1, image2, imgae3 are all batched image data
     # specifically, every item in image1 has the same class with its corresponding one in image2
     # while image3 is independent to image1 (randomly picked)
-    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
-        class_vector_1, style_vector_1, w, h, c = encoder(image1,kernel,stride,class_dim,style_dim,is_training,'encoder')
+    # with variable_scope.variable_scope(name, reuse=tf.AUTO_REUSE) as scope:
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE) as scope:
+        class_vector_1, style_vector_1, w, h, c = encoder(image1,kernel,stride,class_dim,style_dim,is_training)
+        class_vector_2, style_vector_2, w, h, c = encoder(image2,kernel,stride,class_dim,style_dim,is_training)
         w,h,c = int(w), int(h), int(c)
+        image1_transfer_reconstruct = decoder(tf.concat([class_vector_1,style_vector_2],1),w,h,c,kernel,stride,is_training)
+        image2_transfer_reconstruct = decoder(tf.concat([class_vector_2,style_vector_1],1),w,h,c,kernel,stride,is_training)
 
         # forward
-        image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_1],1),w,h,c,kernel,stride,is_training,'decoder')
+        image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_1],1),w,h,c,kernel,stride,is_training)
         reconstruct_loss_1 = tf.reduce_mean(tf.reduce_sum(tf.abs(image1-image1_forward_reconstruct),[1,2,3]))
         reconstruct_loss_1 = reconstruct_coef_1 * reconstruct_loss_1
 
-        image2_forward_reconstruct = decoder(tf.concat([class_vector_1,tf.zeros_like(style_vector_1)],1),w,h,c,kernel,stride,is_training,'decoder')
+        image2_forward_reconstruct = decoder(tf.concat([class_vector_1,tf.zeros_like(style_vector_1)],1),w,h,c,kernel,stride,is_training)
         reconstruct_loss_2 = tf.reduce_mean(tf.reduce_sum(tf.abs(image2-image2_forward_reconstruct),[1,2,3]))
         reconstruct_loss_2 = reconstruct_coef_2 * reconstruct_loss_2
 
         forward_loss = reconstruct_loss_1 + reconstruct_loss_2
 
-        image1_pred_true = discriminator(image2,kernel,stride,is_training,'discriminator')
-        image1_pred_forward_fake = discriminator(image1_forward_reconstruct,kernel,stride,is_training,'discriminator')
-
+        image1_pred_true = discriminator(image1,kernel,stride,is_training)
+        image2_pred_true = discriminator(image2,kernel,stride,is_training)
+        image1_pred_forward_fake = discriminator(image1_forward_reconstruct,kernel,stride,is_training)
+        image2_pred_forward_fake = discriminator(image2_forward_reconstruct,kernel,stride,is_training)
         discriminator_true_1 = tf.reduce_mean(tf.log(image1_pred_true + 1e-6))
+        discriminator_true_2 = tf.reduce_mean(tf.log(image2_pred_true + 1e-6))
         discriminator_forward_fake_1 = tf.reduce_mean(tf.log(1.0 - image1_pred_forward_fake + 1e-6))
         discriminator_forward_true_1 = tf.reduce_mean(tf.log(image1_pred_forward_fake + 1e-6))
+        discriminator_forward_fake_2 = tf.reduce_mean(tf.log(1.0 - image2_pred_forward_fake + 1e-6))
+        discriminator_forward_true_2 = tf.reduce_mean(tf.log(image2_pred_forward_fake + 1e-6))
 
-        generator_loss = -generator_coef * discriminator_forward_true_1
-        discriminator_loss = -discriminator_coef * (discriminator_true_1 + discriminator_forward_fake_1)
+        generator_loss = -generator_coef * (discriminator_forward_true_1 + discriminator_forward_true_2)
+        discriminator_loss = -discriminator_coef * (discriminator_true_1 + discriminator_true_2 + discriminator_forward_fake_1 + discriminator_forward_fake_2)
 
-        return forward_loss, reconstruct_loss_1, reconstruct_loss_2, generator_loss, discriminator_loss, image1_forward_reconstruct, image2_forward_reconstruct, class_vector_1, style_vector_1
+    return forward_loss, reconstruct_loss_1, reconstruct_loss_2, generator_loss, discriminator_loss, image1_forward_reconstruct, image2_forward_reconstruct, class_vector_1, style_vector_1, image1_transfer_reconstruct, image2_transfer_reconstruct
+
+def transfer(image1,image2,kernel,stride,class_dim,style_dim,is_training,name):
+    with tf.variable_scope(name,reuse=tf.AUTO_REUSE):
+        class_vector_1, style_vector_1, w, h, c = encoder(image1,kernel,stride,class_dim,style_dim,is_training)
+        class_vector_2, style_vector_2, w, h, c = encoder(image2,kernel,stride,class_dim,style_dim,is_training)
+        w,h,c = int(w), int(h), int(c)
+
+        image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_2],1),w,h,c,kernel,stride,is_training)
+        image2_forward_reconstruct = decoder(tf.concat([class_vector_2,style_vector_1],1),w,h,c,kernel,stride,is_training)
+
+        return image1_forward_reconstruct, image2_forward_reconstruct
