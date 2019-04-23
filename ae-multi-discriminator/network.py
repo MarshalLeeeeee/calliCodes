@@ -18,8 +18,8 @@ def leaky_rectify(x, leakiness=0.01):
     ret = tf.maximum(x, leakiness * x)
     return ret
 
-def cross_entrophy(label,pred):
-    return -(label*tf.log(pred)+(1-label)*tf.log(1-pred))
+def cross_entrophy(label,pred,tiny=1e-6):
+    return -(label*tf.log(pred+tiny)+(1-label)*tf.log(1-pred+tiny))
 
 def conv_batch_norm(inputs,
                     name="batch_norm",
