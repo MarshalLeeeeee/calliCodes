@@ -18,6 +18,9 @@ def leaky_rectify(x, leakiness=0.01):
     ret = tf.maximum(x, leakiness * x)
     return ret
 
+def cross_entrophy(label,pred):
+    return -(label*tf.log(pred)+(1-label)*tf.log(1-pred))
+
 def conv_batch_norm(inputs,
                     name="batch_norm",
                     is_training=True,
@@ -144,16 +147,19 @@ def ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_di
         image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_1],1),w,h,c,kernel,stride,is_training)
         image3_forward_reconstruct = decoder(tf.concat([class_vector_3,style_vector_3],1),w,h,c,kernel,stride,is_training)
         reconstruct_loss_1 = tf.reduce_mean(tf.reduce_sum(tf.abs(image1-image1_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image3-image3_forward_reconstruct),[1,2,3]))
+        #reconstruct_loss_1 = tf.reduce_mean(cross_entrophy(image1,image1_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image3,image3_forward_reconstruct))
         reconstruct_loss_1 = reconstruct_coef_1 * reconstruct_loss_1
 
         image2_forward_reconstruct = decoder(tf.concat([class_vector_1,tf.zeros_like(style_vector_1)],1),w,h,c,kernel,stride,is_training)
         image4_forward_reconstruct = decoder(tf.concat([class_vector_3,tf.zeros_like(style_vector_3)],1),w,h,c,kernel,stride,is_training)
         reconstruct_loss_2 = tf.reduce_mean(tf.reduce_sum(tf.abs(image2-image2_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image4-image4_forward_reconstruct),[1,2,3]))
+        #reconstruct_loss_2 = tf.reduce_mean(cross_entrophy(image2,image2_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image4,image4_forward_reconstruct))
         reconstruct_loss_2 = reconstruct_coef_2 * reconstruct_loss_2
 
         image1_style_reconstruct = decoder(tf.concat([class_vector_1,style_vector_3],1),w,h,c,kernel,stride,is_training)
         image3_style_reconstruct = decoder(tf.concat([class_vector_3,style_vector_1],1),w,h,c,kernel,stride,is_training)
         reconstruct_loss_3 = tf.reduce_mean(tf.reduce_sum(tf.abs(image5-image1_style_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image6-image3_style_reconstruct),[1,2,3]))
+        #reconstruct_loss_3 = tf.reduce_mean(cross_entrophy(image5,image1_style_reconstruct)) + tf.reduce_mean(cross_entrophy(image6,image3_style_reconstruct))
         reconstruct_loss_3 = reconstruct_coef_3 * reconstruct_loss_3
 
         forward_loss = reconstruct_loss_1 + reconstruct_loss_2 + reconstruct_loss_3

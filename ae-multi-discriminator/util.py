@@ -2,21 +2,29 @@ import numpy as np
 import os
 from PIL import Image
 
-def locate(data_path, styles=None, max_label=100):
-    imageName, imageDict = [], {}
+def locate(data_path, styles=None, max_label=100, partition=[]):
+    imageNameTrain, imageDictTrain = [], {}
+    imageNameTest, imageDictTest = [], {}
     if styles is None: styles = ['std-comp']
     for i in range(len(styles)):
         path = os.path.join(data_path,styles[i])
         for basepath, directories, fnames in os.walk(path):
+            cnt = 0
             for fname in fnames:
                 flabel = int(fname.split('/')[-1].split('.')[0].split('-')[0])
                 suffix = fname.split('/')[-1].split('.')[-1]
                 if suffix == 'png':
                     if flabel < max_label:
-                        imageName.append(os.path.join(basepath,fname))
-                        if flabel not in imageDict: imageDict[flabel] = []
-                        imageDict[flabel].append(os.path.join(basepath,fname))
-    return np.array(imageName), imageDict
+                        if flabel in partition:
+                            imageNameTest.append(os.path.join(basepath,fname))
+                            if flabel not in imageDictTest: imageDictTest[flabel] = []
+                            imageDictTest[flabel].append(os.path.join(basepath,fname))
+                        else:
+                            imageNameTrain.append(os.path.join(basepath,fname))
+                            if flabel not in imageDictTrain: imageDictTrain[flabel] = []
+                            imageDictTrain[flabel].append(os.path.join(basepath,fname))
+                cnt += 1
+    return np.array(imageNameTrain), imageDictTrain, np.array(imageNameTest), imageDictTest
 
 def choice(image1,imageDict):
     image2 = []

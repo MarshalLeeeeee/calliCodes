@@ -10,6 +10,7 @@ def init():
     parser.add_argument('--gpu', type=str, default='0', help="gpu to use")
     parser.add_argument('--gpu_fraction', type=float, default=0.8, help="fraction of gpu memory to use")
     parser.add_argument('--categorical_cardinality', type=int, default=1000, help="number of the characters to be loaded")
+    parser.add_argument('--fraction', type=float, default=0.99, help="fraction of train and test")
     parser.add_argument('--data_path', type=str, default='../../demo/', help="path to save images")
     parser.add_argument('--style_1', type=str, default='10', help="calligraphy style 1")
     parser.add_argument('--style_2', type=str, default='6', help="calligraphy style 2")
@@ -35,6 +36,7 @@ def main():
     parser = init()
     os.environ["CUDA_VISIBLE_DEVICES"] = parser.gpu
     categorical_cardinality = parser.categorical_cardinality
+    fraction = parser.fraction
     data_path = parser.data_path
     style_1 = parser.style_1
     style_2 = parser.style_2
@@ -56,10 +58,13 @@ def main():
     discriminator_coef = parser.discriminator_coef
 
     # load data
-    imageName1, imageDict1 = locate(data_path, styles=['std/'+style_1+'/cut'], max_label=categorical_cardinality)
-    imageName2, imageDict2 = locate(data_path, styles=['std/'+style_2+'/cut'], max_label=categorical_cardinality)
-    imageName3, imageDict3 = locate(data_path, styles=['std/0/cut'], max_label=categorical_cardinality)
-    imageNum = len(imageName1)
+    partition = np.arange(categorical_cardinality, dtype=np.int32)
+    np.random.shuffle(partition)
+    partition = partition[:int(categorical_cardinality*(1-fraction))]
+    imageNameTrain1, imageDictTrain1, imageNameTest1, imageDictTest1 = locate(data_path, styles=['std/'+style_1+'/cut'], max_label=categorical_cardinality, partition=partition)
+    imageNameTrain2, imageDictTrain2, imageNameTest2, imageDictTest2 = locate(data_path, styles=['std/'+style_2+'/cut'], max_label=categorical_cardinality, partition=partition)
+    imageNameTrain3, imageDictTrain3, imageNameTest3, imageDictTest3 = locate(data_path, styles=['std/0/cut'], max_label=categorical_cardinality, partition=partition)
+    imageNum = len(imageNameTrain1)
 
     image1 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image1")
     image2 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image2")
@@ -109,12 +114,12 @@ def main():
             discriminator_losses = []
             
             for idx in range(0, imageNum, batch_size):
-                image1_batch = loader(imageName1[idxes_1[idx:idx + batch_size]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-                image2_batch = loader(find_truth(imageName1[idxes_1[idx:idx + batch_size]],imageDict3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-                image3_batch = loader(imageName2[idxes_2[idx:idx + batch_size]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-                image4_batch = loader(find_truth(imageName2[idxes_2[idx:idx + batch_size]],imageDict3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-                image5_batch = loader(find_truth(imageName1[idxes_1[idx:idx + batch_size]],imageDict2),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-                image6_batch = loader(find_truth(imageName2[idxes_2[idx:idx + batch_size]],imageDict1),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image1_batch = loader(imageNameTrain1[idxes_1[idx:idx + batch_size]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image2_batch = loader(find_truth(imageNameTrain1[idxes_1[idx:idx + batch_size]],imageDictTrain3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image3_batch = loader(imageNameTrain2[idxes_2[idx:idx + batch_size]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image4_batch = loader(find_truth(imageNameTrain2[idxes_2[idx:idx + batch_size]],imageDictTrain3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image5_batch = loader(find_truth(imageNameTrain1[idxes_1[idx:idx + batch_size]],imageDictTrain2),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+                image6_batch = loader(find_truth(imageNameTrain2[idxes_2[idx:idx + batch_size]],imageDictTrain1),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
                 feed_dict_training = {image1:image1_batch,image2:image2_batch,image3:image3_batch,image4:image4_batch,image5:image5_batch,image6:image6_batch,is_training:True}
 
                 # forward
@@ -136,17 +141,29 @@ def main():
                 (epoch, get_mean(forward_losses), get_mean(reconstruct_losses_1), get_mean(reconstruct_losses_2), get_mean(reconstruct_losses_3), get_mean(generator_losses), get_mean(discriminator_losses)))
             
             # test
-            image1_plot = loader(imageName1[idxes_1[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-            image2_plot = loader(find_truth(imageName1[idxes_1[0:10]],imageDict3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-            image3_plot = loader(imageName2[idxes_2[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-            image4_plot = loader(find_truth(imageName2[idxes_2[0:10]],imageDict3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-            image5_plot = loader(find_truth(imageName1[idxes_1[0:10]],imageDict2),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
-            image6_plot = loader(find_truth(imageName2[idxes_2[0:10]],imageDict1),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image1_plot = loader(imageNameTrain1[idxes_1[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image2_plot = loader(find_truth(imageNameTrain1[idxes_1[0:10]],imageDictTrain3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image3_plot = loader(imageNameTrain2[idxes_2[0:10]],desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image4_plot = loader(find_truth(imageNameTrain2[idxes_2[0:10]],imageDictTrain3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image5_plot = loader(find_truth(imageNameTrain1[idxes_1[0:10]],imageDictTrain2),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image6_plot = loader(find_truth(imageNameTrain2[idxes_2[0:10]],imageDictTrain1),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
             feed_dict_not_training = {image1:image1_plot,image2:image2_plot,image3:image3_plot,image4:image4_plot,image5:image5_plot,image6:image6_plot,is_training:False}
             _image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct = sess.run([image1_forward_reconstruct,image2_forward_reconstruct,image3_forward_reconstruct,image4_forward_reconstruct,image1_style_reconstruct,image3_style_reconstruct],feed_dict=feed_dict_not_training)
             images = [image1_plot,image2_plot,image3_plot,image4_plot,image5_plot,image6_plot,_image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct]
             coefs = [reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3]
-            plot_batch(images, 'demo', epoch, coefs)
+            plot_batch(images, 'train', epoch, coefs)
+
+            image1_plot = loader(imageNameTest1,desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image2_plot = loader(find_truth(imageNameTest1,imageDictTest3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image3_plot = loader(imageNameTest2,desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image4_plot = loader(find_truth(imageNameTest2,imageDictTest3),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image5_plot = loader(find_truth(imageNameTest1,imageDictTest2),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            image6_plot = loader(find_truth(imageNameTest2,imageDictTest1),desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
+            feed_dict_not_training = {image1:image1_plot,image2:image2_plot,image3:image3_plot,image4:image4_plot,image5:image5_plot,image6:image6_plot,is_training:False}
+            _image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct = sess.run([image1_forward_reconstruct,image2_forward_reconstruct,image3_forward_reconstruct,image4_forward_reconstruct,image1_style_reconstruct,image3_style_reconstruct],feed_dict=feed_dict_not_training)
+            images = [image1_plot,image2_plot,image3_plot,image4_plot,image5_plot,image6_plot,_image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct]
+            coefs = [reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3]
+            plot_batch(images, 'test', epoch, coefs)
 
         saver.save(sess,os.path.join(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)+'-'+str(reconstruct_coef_3)),'model'))
 
