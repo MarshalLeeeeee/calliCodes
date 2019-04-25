@@ -131,7 +131,7 @@ def discriminator(image,kernel,stride,is_training,name='discriminator'):
         pred = fc(fc2,1,is_training,layers.batch_norm,tf.nn.sigmoid,'pred')
     return pred
 
-def ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_dim,style_dim,is_training,reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef,name='ae-with-gan'):
+def ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_dim,style_dim,is_training,loss_type,reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef,name='ae-with-gan'):
     # image2 is the ground truth of image1
     # image4 is the ground truth of image3
     # image5 if the ground truth of content of image1 with style of image3
@@ -146,20 +146,32 @@ def ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_di
         # forward
         image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_1],1),w,h,c,kernel,stride,is_training)
         image3_forward_reconstruct = decoder(tf.concat([class_vector_3,style_vector_3],1),w,h,c,kernel,stride,is_training)
-        reconstruct_loss_1 = tf.reduce_mean(tf.reduce_sum(tf.abs(image1-image1_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image3-image3_forward_reconstruct),[1,2,3]))
-        #reconstruct_loss_1 = tf.reduce_mean(cross_entrophy(image1,image1_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image3,image3_forward_reconstruct))
+        if loss_type == 'l1':
+            reconstruct_loss_1 = tf.reduce_mean(tf.reduce_sum(tf.abs(image1-image1_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image3-image3_forward_reconstruct),[1,2,3]))
+        elif loss_type == 'ce':
+            reconstruct_loss_1 = tf.reduce_mean(cross_entrophy(image1,image1_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image3,image3_forward_reconstruct))
+        else:
+            reconstruct_loss_1 = 0
         reconstruct_loss_1 = reconstruct_coef_1 * reconstruct_loss_1
 
         image2_forward_reconstruct = decoder(tf.concat([class_vector_1,tf.zeros_like(style_vector_1)],1),w,h,c,kernel,stride,is_training)
         image4_forward_reconstruct = decoder(tf.concat([class_vector_3,tf.zeros_like(style_vector_3)],1),w,h,c,kernel,stride,is_training)
-        reconstruct_loss_2 = tf.reduce_mean(tf.reduce_sum(tf.abs(image2-image2_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image4-image4_forward_reconstruct),[1,2,3]))
-        #reconstruct_loss_2 = tf.reduce_mean(cross_entrophy(image2,image2_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image4,image4_forward_reconstruct))
+        if loss_type == 'l1':
+            reconstruct_loss_2 = tf.reduce_mean(tf.reduce_sum(tf.abs(image2-image2_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image4-image4_forward_reconstruct),[1,2,3]))
+        elif loss_type == 'ce':
+            reconstruct_loss_2 = tf.reduce_mean(cross_entrophy(image2,image2_forward_reconstruct)) + tf.reduce_mean(cross_entrophy(image4,image4_forward_reconstruct))
+        else:
+            reconstruct_loss_2 = 0
         reconstruct_loss_2 = reconstruct_coef_2 * reconstruct_loss_2
 
         image1_style_reconstruct = decoder(tf.concat([class_vector_1,style_vector_3],1),w,h,c,kernel,stride,is_training)
         image3_style_reconstruct = decoder(tf.concat([class_vector_3,style_vector_1],1),w,h,c,kernel,stride,is_training)
-        reconstruct_loss_3 = tf.reduce_mean(tf.reduce_sum(tf.abs(image5-image1_style_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image6-image3_style_reconstruct),[1,2,3]))
-        #reconstruct_loss_3 = tf.reduce_mean(cross_entrophy(image5,image1_style_reconstruct)) + tf.reduce_mean(cross_entrophy(image6,image3_style_reconstruct))
+        if loss_type == 'l1':
+            reconstruct_loss_3 = tf.reduce_mean(tf.reduce_sum(tf.abs(image5-image1_style_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image6-image3_style_reconstruct),[1,2,3]))
+        elif loss_type == 'ce':
+            reconstruct_loss_3 = tf.reduce_mean(cross_entrophy(image5,image1_style_reconstruct)) + tf.reduce_mean(cross_entrophy(image6,image3_style_reconstruct))
+        else:
+            reconstruct_loss_3 = 0
         reconstruct_loss_3 = reconstruct_coef_3 * reconstruct_loss_3
 
         forward_loss = reconstruct_loss_1 + reconstruct_loss_2 + reconstruct_loss_3

@@ -18,6 +18,7 @@ def init():
     parser.add_argument('--force_grayscale', type=bool, default=True, help="transform images into single channel or not")
     parser.add_argument('--seed', type=int, default=1, help="random seed")
     parser.add_argument('--lr', type=float, default=5e-5, help="learning rate")
+    parser.add_argument('--loss_type', type=str, default='l1', help="choice of loss functions")
     parser.add_argument('--batch_size', type=int, default=64, help="batch size")
     parser.add_argument('--epochs', type=int, default=1000, help="epochs")
     parser.add_argument('--kernel', type=int, default=4, help="kernel size")
@@ -45,6 +46,7 @@ def main():
     channel_size = 1 if force_grayscale else 3
     seed = parser.seed
     lr = parser.lr
+    loss_type = parser.loss_type
     batch_size = parser.batch_size
     epochs = parser.epochs
     kernel = parser.kernel
@@ -61,6 +63,7 @@ def main():
     partition = np.arange(categorical_cardinality, dtype=np.int32)
     np.random.shuffle(partition)
     partition = partition[:int(categorical_cardinality*(1-fraction))]
+    print('partition:\n',partition)
     imageNameTrain1, imageDictTrain1, imageNameTest1, imageDictTest1 = locate(data_path, styles=['std/'+style_1+'/cut'], max_label=categorical_cardinality, partition=partition)
     imageNameTrain2, imageDictTrain2, imageNameTest2, imageDictTest2 = locate(data_path, styles=['std/'+style_2+'/cut'], max_label=categorical_cardinality, partition=partition)
     imageNameTrain3, imageDictTrain3, imageNameTest3, imageDictTest3 = locate(data_path, styles=['std/0/cut'], max_label=categorical_cardinality, partition=partition)
@@ -76,7 +79,7 @@ def main():
 
     forward_loss, reconstruct_loss_1, reconstruct_loss_2, reconstruct_loss_3, generator_loss, discriminator_loss, \
     image1_forward_reconstruct, image2_forward_reconstruct, image3_forward_reconstruct, image4_forward_reconstruct, \
-    class_vector_1, style_vector_1, image1_style_reconstruct, image3_style_reconstruct = ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_dim,style_dim,is_training,
+    class_vector_1, style_vector_1, image1_style_reconstruct, image3_style_reconstruct = ae_with_gan(image1,image2,image3,image4,image5,image6,kernel,stride,class_dim,style_dim,is_training, loss_type,
                                                                                                      reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef,
                                                                                                      'ae-with-gan')
 
@@ -150,7 +153,7 @@ def main():
             feed_dict_not_training = {image1:image1_plot,image2:image2_plot,image3:image3_plot,image4:image4_plot,image5:image5_plot,image6:image6_plot,is_training:False}
             _image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct = sess.run([image1_forward_reconstruct,image2_forward_reconstruct,image3_forward_reconstruct,image4_forward_reconstruct,image1_style_reconstruct,image3_style_reconstruct],feed_dict=feed_dict_not_training)
             images = [image1_plot,image2_plot,image3_plot,image4_plot,image5_plot,image6_plot,_image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct]
-            coefs = [reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3]
+            coefs = [loss_type,lr,reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef]
             plot_batch(images, 'train', epoch, coefs)
 
             image1_plot = loader(imageNameTest1,desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),force_grayscale=force_grayscale)
@@ -162,10 +165,14 @@ def main():
             feed_dict_not_training = {image1:image1_plot,image2:image2_plot,image3:image3_plot,image4:image4_plot,image5:image5_plot,image6:image6_plot,is_training:False}
             _image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct = sess.run([image1_forward_reconstruct,image2_forward_reconstruct,image3_forward_reconstruct,image4_forward_reconstruct,image1_style_reconstruct,image3_style_reconstruct],feed_dict=feed_dict_not_training)
             images = [image1_plot,image2_plot,image3_plot,image4_plot,image5_plot,image6_plot,_image1_forward_reconstruct,_image2_forward_reconstruct,_image3_forward_reconstruct,_image4_forward_reconstruct,_image1_style_reconstruct,_image3_style_reconstruct]
-            coefs = [reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3]
+            coefs = [loss_type,lr,reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef]
             plot_batch(images, 'test', epoch, coefs)
 
-        saver.save(sess,os.path.join(os.path.join('ckpt',str(reconstruct_coef_1)+'-'+str(reconstruct_coef_2)+'-'+str(reconstruct_coef_3)),'model'))
+        coefs = [loss_type,lr,reconstruct_coef_1,reconstruct_coef_2,reconstruct_coef_3,generator_coef,discriminator_coef]
+        suffix = ''
+        for coef in coefs:
+            suffix += str(coef)+'-'
+        saver.save(sess,os.path.join(os.path.join('ckpt',suffix[:-1]),'model'))
 
 
 if __name__ == '__main__':
