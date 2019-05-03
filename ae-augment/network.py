@@ -131,7 +131,7 @@ def discriminator(image,kernel,stride,is_training,classNum=1,name='discriminator
         pred = fc(fc2,classNum,is_training,layers.batch_norm,tf.nn.sigmoid,'pred')
     return pred
 
-def ae_with_gan(image1,image3,image5,image6,kernel,stride,class_dim,style_dim,is_training,loss_type,style_num,reconstruct_coef_1,reconstruct_coef_3,generator_coef,discriminator_coef,name='ae-with-gan'):
+def ae_with_gan(image1,image3,image5,image6,label1,label3,is_calligraphy,kernel,stride,class_dim,style_dim,image_size,channel_size,is_training,loss_type,style_num,reconstruct_coef_1,reconstruct_coef_3,generator_coef,discriminator_coef,name='ae-with-gan'):
     # image2 is the ground truth of image1
     # image4 is the ground truth of image3
     # image5 if the ground truth of content of image1 with style of image3
@@ -144,8 +144,8 @@ def ae_with_gan(image1,image3,image5,image6,kernel,stride,class_dim,style_dim,is
         # forward
         image1_forward_reconstruct = decoder(tf.concat([class_vector_1,style_vector_1],1),w,h,c,kernel,stride,is_training)
         image3_forward_reconstruct = decoder(tf.concat([class_vector_3,style_vector_3],1),w,h,c,kernel,stride,is_training)
-        image1_forward_reconstruct = binary(image1_forward_reconstruct)
-        image3_forward_reconstruct = binary(image3_forward_reconstruct)
+        image1_forward_reconstruct = binary(image1_forward_reconstruct,image_size,channel_size,0.7)
+        image3_forward_reconstruct = binary(image3_forward_reconstruct,image_size,channel_size,0.7)
         if loss_type == 'l1':
             reconstruct_loss_1 = tf.reduce_mean(tf.reduce_sum(tf.abs(image1-image1_forward_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image3-image3_forward_reconstruct),[1,2,3]))
         elif loss_type == 'ce':
@@ -157,8 +157,8 @@ def ae_with_gan(image1,image3,image5,image6,kernel,stride,class_dim,style_dim,is
         # swap
         image1_style_reconstruct = decoder(tf.concat([class_vector_1,style_vector_3],1),w,h,c,kernel,stride,is_training)
         image3_style_reconstruct = decoder(tf.concat([class_vector_3,style_vector_1],1),w,h,c,kernel,stride,is_training)
-        image1_style_reconstruct = binary(image1_style_reconstruct)
-        image3_style_reconstruct = binary(image3_style_reconstruct)
+        image1_style_reconstruct = binary(image1_style_reconstruct,image_size,channel_size,0.7)
+        image3_style_reconstruct = binary(image3_style_reconstruct,image_size,channel_size,0.7)
         if loss_type == 'l1':
             reconstruct_loss_3 = tf.reduce_mean(tf.reduce_sum(tf.abs(image5-image1_style_reconstruct),[1,2,3])) + tf.reduce_mean(tf.reduce_sum(tf.abs(image6-image3_style_reconstruct),[1,2,3]))
         elif loss_type == 'ce':
@@ -169,6 +169,7 @@ def ae_with_gan(image1,image3,image5,image6,kernel,stride,class_dim,style_dim,is
 
         forward_loss = reconstruct_loss_1 + reconstruct_loss_3
 
+        style_num = style_num + 1
         image1_pred_true = discriminator(image1,kernel,stride,is_training,style_num,'discriminator')
         image3_pred_true = discriminator(image3,kernel,stride,is_training,style_num,'discriminator')
         image5_pred_true = discriminator(image5,kernel,stride,is_training,style_num,'discriminator')
@@ -178,33 +179,40 @@ def ae_with_gan(image1,image3,image5,image6,kernel,stride,class_dim,style_dim,is
         image1_style_forward_fake = discriminator(image1_style_reconstruct,kernel,stride,is_training,style_num,'discriminator')
         image3_style_forward_fake = discriminator(image3_style_reconstruct,kernel,stride,is_training,style_num,'discriminator')
 
-        # todo
+        label1_true = tf.concat([is_calligraphy,label1],1)
+        label3_true = tf.concat([is_calligraphy,label3],1)
+        label_fake = tf.zeros_like(label1_true)
 
-        discriminator_true_1 = tf.reduce_mean(tf.log(image1_pred_true + 1e-6))
-        discriminator_true_3 = tf.reduce_mean(tf.log(image3_pred_true + 1e-6))
-        discriminator_true_5 = tf.reduce_mean(tf.log(image5_pred_true + 1e-6))
-        discriminator_true_6 = tf.reduce_mean(tf.log(image6_pred_true + 1e-6))
-        discriminator_forward_fake_1 = tf.reduce_mean(tf.log(1.0 - image1_pred_forward_fake + 1e-6))
-        discriminator_forward_true_1 = tf.reduce_mean(tf.log(image1_pred_forward_fake + 1e-6))
-        discriminator_forward_fake_3 = tf.reduce_mean(tf.log(1.0 - image3_pred_forward_fake + 1e-6))
-        discriminator_forward_true_3 = tf.reduce_mean(tf.log(image3_pred_forward_fake + 1e-6))
-        discriminator_style_fake_1 = tf.reduce_mean(tf.log(1.0 - image1_style_forward_fake + 1e-6))
-        discriminator_style_true_1 = tf.reduce_mean(tf.log(image1_style_forward_fake + 1e-6))
-        discriminator_style_fake_3 = tf.reduce_mean(tf.log(1.0 - image3_style_forward_fake + 1e-6))
-        discriminator_style_true_3 = tf.reduce_mean(tf.log(image3_style_forward_fake + 1e-6))
+        discriminator_true_1 = tf.reduce_mean(cross_entrophy(label1_true,image1_pred_true))
+        discriminator_true_3 = tf.reduce_mean(cross_entrophy(label3_true,image3_pred_true))
+        discriminator_true_5 = tf.reduce_mean(cross_entrophy(label3_true,image5_pred_true))
+        discriminator_true_6 = tf.reduce_mean(cross_entrophy(label1_true,image6_pred_true))
+        discriminator_forward_fake_1 = tf.reduce_mean(cross_entrophy(label_fake,image1_pred_forward_fake))
+        discriminator_forward_true_1 = tf.reduce_mean(cross_entrophy(label1_true,image1_pred_forward_fake))
+        discriminator_forward_fake_3 = tf.reduce_mean(cross_entrophy(label_fake,image3_pred_forward_fake))
+        discriminator_forward_true_3 = tf.reduce_mean(cross_entrophy(label3_true,image3_pred_forward_fake))
+        discriminator_style_fake_1 = tf.reduce_mean(cross_entrophy(label_fake,image1_style_forward_fake))
+        discriminator_style_true_1 = tf.reduce_mean(cross_entrophy(label3_true,image1_style_forward_fake))
+        discriminator_style_fake_3 = tf.reduce_mean(cross_entrophy(label_fake,image3_style_forward_fake))
+        discriminator_style_true_3 = tf.reduce_mean(cross_entrophy(label1_true,image3_style_forward_fake))
 
         generator_loss_1 = reconstruct_coef_1 * discriminator_forward_true_1 + reconstruct_coef_3 * discriminator_style_true_3
         generator_loss_3 = reconstruct_coef_1 * discriminator_forward_true_3 + reconstruct_coef_3 * discriminator_style_true_1
-        generator_loss = -generator_coef * (generator_loss_1 + generator_loss_3)
+        generator_loss = generator_coef * (generator_loss_1 + generator_loss_3)
 
         discriminator_loss_1 = reconstruct_coef_1 * (discriminator_true_1 + discriminator_true_6 + discriminator_forward_fake_1) + reconstruct_coef_3 * discriminator_style_fake_3
         discriminator_loss_3 = reconstruct_coef_1 * (discriminator_true_3 + discriminator_true_5 + discriminator_forward_fake_3) + reconstruct_coef_3 * discriminator_style_fake_1
-        discriminator_loss = -discriminator_coef * (discriminator_loss_1 + discriminator_loss_2 + discriminator_loss_3)
+        discriminator_loss = discriminator_coef * (discriminator_loss_1 + discriminator_loss_3)
 
-    return forward_loss, reconstruct_loss_1, reconstruct_loss_3, generator_loss, discriminator_loss, image1_forward_reconstruct, image3_forward_reconstruct, image1_style_reconstruct, image3_style_reconstruct, class_vector_1, style_vector_1, class_vector_3, style_vector_3
+    return forward_loss, reconstruct_loss_1, reconstruct_loss_3, generator_loss, discriminator_loss, \
+    image1_forward_reconstruct, image3_forward_reconstruct, image1_style_reconstruct, image3_style_reconstruct, \
+    class_vector_1, style_vector_1, class_vector_3, style_vector_3,\
+    image1_pred_true, image3_pred_true, image5_pred_true, image6_pred_true, image1_pred_forward_fake, image3_pred_forward_fake, image1_style_forward_fake, image3_style_forward_fake
 
-def binary(image,image_size,channel_size):
+def binary(image,image_size,channel_size,threshold=None):
     image_average = tf.reshape(tf.reduce_mean(image,[1,2,3]),[-1,1,1,1])
+    if threshold is not None:
+        image_average = tf.cast(tf.ones_like(image_average)*threshold,tf.float32)
     image_average = tf.tile(image_average,[1, image_size, image_size, channel_size])
     image_mask = tf.cast(tf.less(image,image_average),tf.float32)
     return image*image_mask+(1-image_mask)

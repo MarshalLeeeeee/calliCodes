@@ -36,21 +36,30 @@ def find_truth(image1,imageTrue):
         image2.append(imageTrue[flabel][0])
     return image2
 
-def numpy_append(batch,img):
+def numpy_img_append(batch,img):
     if batch is None: 
         batch = np.array([img], dtype=np.float32)
     else: 
         batch = np.concatenate((batch,np.array([img], dtype=np.float32)),axis=0)
     return batch
 
+def numpy_label_append(label,styleNum,styleId):
+    hotVector = np.zeros(styleNum)
+    hotVector[styleId] = 1
+    if label is None:
+        label = np.array([hotVector],dtype=np.float32)
+    else:
+        label = np.concatenate((label,np.array([hotVector], dtype=np.float32)),axis=0)
+    return label
+
 def img_loader(imgName,desired_height,desired_width,center_height,center_width,force_grayscale):
     image = Image.open(imgName)
     width, height = image.size
     img = Image.new('L',(desired_width,desired_height))
-    background = np.ones_like(image,dtype=np.uint8)*200
+    background = np.ones_like(image,dtype=np.uint8)*255
     img.paste(Image.fromarray(background.astype(np.uint8)),(0,0))
     if width != center_width or height != center_height:
-        image = image.resize((center_width, center_height), Image.BILINEAR)
+        image = image.resize((center_width, center_height), Image.ANTIALIAS)
     image_np = np.array(image).astype(np.uint8)
     #image_binary = np.greater(image_np,np.ones_like(image_np)*250).astype(np.uint8)
     img.paste(Image.fromarray(image_np),(int(desired_width/2)-int(center_width/2),int(desired_height/2)-int(center_height/2)))
@@ -64,24 +73,37 @@ def img_loader(imgName,desired_height,desired_width,center_height,center_width,f
     #print(np.mean(np.power(img-255/2,2)-(255/2)*(255/2)))
     return img
 
-def loader(imageName,idxes1,idxes2,charNum,desired_height,desired_width,value_range,augment,force_grayscale=True):
+def loader(imageName,idxes1,idxes2,styleNum,charNum,desired_height,desired_width,value_range,augment,force_grayscale=True):
+    '''
+    0 1 2  3 
+    4 5 6  7 
+    8 9 10 11
+    '''
     length = idxes1.shape[0]
     fractions = [0.75, 0.5, 0.25]
     batch1, batch3, batch5, batch6 = None, None, None, None
+    label1, label3, is_calligraphy = None, None, None
     for i in range(length):
         styleId1 = int(idxes1[i] / charNum)
         charId1 = int(idxes1[i] % charNum)
         styleId2 = int(idxes2[i] / charNum)
         charId2 = int(idxes2[i] % charNum)
-        batch1 = numpy_append(batch1,img_loader(imageName[styleId1,charId1],desired_height,desired_width,desired_height,desired_width,force_grayscale))
-        batch3 = numpy_append(batch3,img_loader(imageName[styleId2,charId2],desired_height,desired_width,desired_height,desired_width,force_grayscale))
-        batch5 = numpy_append(batch5,img_loader(imageName[styleId2,charId1],desired_height,desired_width,desired_height,desired_width,force_grayscale))
-        batch6 = numpy_append(batch6,img_loader(imageName[styleId1,charId2],desired_height,desired_width,desired_height,desired_width,force_grayscale))
+        #print(idxes1[i], idxes2[i], styleId1,charId1,styleId2,charId2)
+        batch1 = numpy_img_append(batch1,img_loader(imageName[styleId1,charId1],desired_height,desired_width,desired_height,desired_width,force_grayscale))
+        batch3 = numpy_img_append(batch3,img_loader(imageName[styleId2,charId2],desired_height,desired_width,desired_height,desired_width,force_grayscale))
+        batch5 = numpy_img_append(batch5,img_loader(imageName[styleId2,charId1],desired_height,desired_width,desired_height,desired_width,force_grayscale))
+        batch6 = numpy_img_append(batch6,img_loader(imageName[styleId1,charId2],desired_height,desired_width,desired_height,desired_width,force_grayscale))
+        label1 = numpy_label_append(label1,styleNum,styleId1)
+        label3 = numpy_label_append(label3,styleNum,styleId2)
+        is_calligraphy = numpy_label_append(is_calligraphy,1,0)
         for level in range(augment):
-            batch1 = numpy_append(batch1,img_loader(imageName[styleId1,charId1],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
-            batch3 = numpy_append(batch3,img_loader(imageName[styleId2,charId2],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
-            batch5 = numpy_append(batch5,img_loader(imageName[styleId2,charId1],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
-            batch6 = numpy_append(batch6,img_loader(imageName[styleId1,charId2],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
+            batch1 = numpy_img_append(batch1,img_loader(imageName[styleId1,charId1],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
+            batch3 = numpy_img_append(batch3,img_loader(imageName[styleId2,charId2],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
+            batch5 = numpy_img_append(batch5,img_loader(imageName[styleId2,charId1],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
+            batch6 = numpy_img_append(batch6,img_loader(imageName[styleId1,charId2],desired_height,desired_width,int(desired_height*fractions[level]),int(desired_width*fractions[level]),force_grayscale))
+            label1 = numpy_label_append(label1,styleNum,styleId1)
+            label3 = numpy_label_append(label3,styleNum,styleId2)
+            is_calligraphy = numpy_label_append(is_calligraphy,1,0)
     #threshold = np.ones_like(batch1,dtype=np.float32)*1.0
     batch1 = (value_range[0] + (batch1 / 255.0) * (value_range[1] - value_range[0]))
     batch3 = (value_range[0] + (batch3 / 255.0) * (value_range[1] - value_range[0]))
@@ -95,7 +117,7 @@ def loader(imageName,idxes1,idxes2,charNum,desired_height,desired_width,value_ra
     #print(np.mean(np.power(batch3-0.5,2)-0.25))
     #print(np.mean(np.power(batch5-0.5,2)-0.25))
     #print(np.mean(np.power(batch6-0.5,2)-0.25))
-    return batch1, batch3, batch5, batch6
+    return batch1, batch3, batch5, batch6, label1, label3, is_calligraphy
 
 
 def plot(image1_plot, image2_plot, image1_reconstruct, image2_reconstruct, title, epoch, reconstruct_coef_1, reconstruct_coef_2, lr):
@@ -127,3 +149,11 @@ def save_vector(imageName, vector):
         style = namesp[-2]
         filename = namesp[-1].split('.')[0]
         np.save(os.path.join(os.path.join(path,style),filename+'.npy'),vector[i])
+
+if __name__ == '__main__':
+    label = None
+    label = numpy_label_append(label,5,2)
+    label = numpy_label_append(label,5,4)
+    label = numpy_label_append(label,5,0)
+    label = numpy_label_append(label,5,2)
+    print(label)

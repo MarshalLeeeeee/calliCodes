@@ -3,7 +3,7 @@ import numpy as np
 import argparse
 import os
 from util import locate, choice, find_truth, loader, plot_batch, make_partition
-from network import ae_with_gan, scope_variables, get_mean, encoder, decoder
+from network import ae_with_gan, scope_variables, get_mean, encoder, decoder, binary
 
 def init():
     parser = argparse.ArgumentParser()
@@ -59,16 +59,19 @@ def main():
 
     # load data
     partition = make_partition(300,categorical_cardinality,fraction)
-    imageNameTrain, imageNameTest = locate(data_path,styles=[6], max_label=categorical_cardinality,partition=partition)
+    imageNameTrain, imageNameTest = locate(data_path,styles=styles, max_label=categorical_cardinality,partition=partition)
     styleNum, charNum, imageNum = imageNameTrain.shape[0], imageNameTrain.shape[1], imageNameTrain.shape[0] * imageNameTrain.shape[1]
 
     image1 = tf.placeholder(tf.float32,[None, image_size, image_size, channel_size],name="image1")
+    image1_binary = binary(image1,image_size,channel_size,0.7)
+    '''
     image1_averge_org = tf.reduce_mean(image1,[1,2,3])
     image1_average = tf.reshape(tf.reduce_mean(image1,[1,2,3]),[-1,1,1,1])
-    image1_average = tf.tile(image1_average,[1, image_size, image_size, channel_size])
-    image1_average = tf.cast(tf.ones_like(image1),tf.float32)*0.4
+    #image1_average = tf.tile(image1_average,[1, image_size, image_size, channel_size])
+    image1_average = tf.cast(tf.ones_like(image1),tf.float32)*0.7
     image1_mask = tf.cast(tf.less(image1,image1_average),tf.float32)
     image1_binary = image1*image1_mask+(1-image1_mask)
+    '''
 
     idxes_1 = np.arange(imageNum, dtype=np.int32)
     idxes_2 = np.arange(imageNum, dtype=np.int32)
@@ -78,12 +81,11 @@ def main():
     config.gpu_options.per_process_gpu_memory_fraction = parser.gpu_fraction
     with tf.Session(config=config) as sess:
         sess.run(tf.global_variables_initializer())
-        image1_plot, _,_,_ = loader(imageNameTrain,idxes_1[0:10],idxes_2[0:10],charNum,desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),augment=augment,force_grayscale=force_grayscale)
+        image1_plot,_,_,_,_,_,_ = loader(imageNameTrain,idxes_1[0:10],idxes_2[0:10],styleNum,charNum,desired_height=image_size,desired_width=image_size,value_range=(0.0, 1.0),augment=augment,force_grayscale=force_grayscale)
         
 
         feed_dict = {image1:image1_plot}
-        _image1_average,_image1_binary = sess.run([image1_average,image1_binary],feed_dict=feed_dict)
-        print(_image1_average.shape)
+        _image1_binary = sess.run(image1_binary,feed_dict=feed_dict)
 
         images = [image1_plot,_image1_binary]
         coefs = [loss_type,lr,reconstruct_coef_1,reconstruct_coef_3,generator_coef,discriminator_coef]
